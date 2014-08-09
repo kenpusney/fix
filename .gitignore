@@ -1,0 +1,7 @@
+bin/
+obj/
+*.o
+*.obj
+*.exe
+*.cbp
+*.depend

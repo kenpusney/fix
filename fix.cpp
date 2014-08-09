@@ -4,47 +4,134 @@
 #include <stack>
 #include <iostream>
 #include <cstdlib>
+#include <vector>
+#include <memory>
 
 using namespace std;
 
-struct FixEnv{
-    static map<string,function<void(FixEnv&)>> env;
-    static void regist(string name, function<void(FixEnv&)> fn){
-        env[name] = fn;
+struct FixEnv;
+struct FixObject{
+    virtual bool isHandle(){
+        return false;
     }
-    stack<int> stk;
-    void push(string s){
-        env[s](*this);
-    }
-    void push(int i){
-        stk.push(i);
-    }
-    static void init_base();
 };
 
-map<string,function<void(FixEnv&)>> FixEnv::env{};
+struct FixNum:FixObject{
+    int value;
+    FixNum(int i):value(i){}
+};
+
+using FixParam = vector<shared_ptr<FixObject>>;
+
+struct FixStub:FixObject{
+    size_t params;
+    function<void(FixEnv&, FixParam&)> fn;
+    FixStub(function<void(FixEnv&,FixParam&)> fn_, size_t params_):params(params_), fn(fn_){}
+    FixStub(){};
+};
+
+struct FixHandle:FixObject{
+    size_t params;
+    FixStub* stub;
+    virtual bool isHandle() override {
+        return true;
+    }
+    vector<shared_ptr<FixObject>> slots;
+    FixHandle(FixStub& stub_):params(stub_.params),
+    stub(&stub_),slots(){};
+    void invoke(FixEnv& env){
+        this->stub->fn(env, slots);
+    }
+};
+
+struct FixEnv{
+    static void regist(string name, size_t params, function<void(FixEnv&,FixParam&)> fn){
+        env[name] = FixStub(fn, params);
+    }
+    void eval(string s){
+        if(env.find(s) == env.end()){ cout << "Error: Cannot found op `"<< s << "`!" <<endl; return;}
+        auto handle = make_shared<FixHandle>(env[s]);
+        while(!stk.empty() && handle->params){
+            handle->slots.push_back(stk.top());
+            handle->params--;
+            stk.pop();
+        }
+        if(!handle->params)
+            handle->invoke(*this);
+        else
+            stk.push(handle);
+    }
+    void eval(int i){
+        if(!stk.empty() && stk.top()->isHandle()){
+            auto handle = dynamic_pointer_cast<FixHandle>(stk.top());
+            handle->slots.push_back(make_shared<FixNum>(i));
+            handle->params--;
+            if(!handle->params) {
+                stk.pop();
+                handle->invoke(*this);
+            }
+        }else{
+            stk.push(make_shared<FixNum>(i));
+        }
+    }
+    void ret(shared_ptr<FixObject> ptr){
+        stk.push(ptr);
+    }
+    static void init_base();
+private:
+    stack<shared_ptr<FixObject>> stk;
+    static map<string,FixStub> env;
+};
+map<string,FixStub> FixEnv::env{};
 
 void FixEnv::init_base(){
-    regist("fix",[](FixEnv& fx){
-        cout << fx.stk.top() << endl;
+    regist("fix", 1, [](FixEnv& fx,FixParam& $){
+        cout <<"=> "<< dynamic_pointer_cast<FixNum>($[0])->value << endl;
+        fx.ret($[0]);
     });
-    regist("add",[](FixEnv& fx){
-        auto x = fx.stk.top();fx.stk.pop();
-        auto y = fx.stk.top();fx.stk.pop();
-        fx.stk.push(x+y);
+    regist("+", 2, [](FixEnv& fx,FixParam& $){
+        fx.ret(
+            make_shared<FixNum>(
+                dynamic_pointer_cast<FixNum>($[0])->value +
+                dynamic_pointer_cast<FixNum>($[1])->value
+            ));
     });
-    regist("sub",[](FixEnv& fx){
-        auto x = fx.stk.top();fx.stk.pop();
-        auto y = fx.stk.top();fx.stk.pop();
-        fx.stk.push(x-y);
+    regist("-", 2, [](FixEnv& fx,FixParam& $){
+        fx.ret(
+            make_shared<FixNum>(
+                dynamic_pointer_cast<FixNum>($[0])->value -
+                dynamic_pointer_cast<FixNum>($[1])->value
+            ));
     });
-    regist("mul",[](FixEnv& fx){
-        auto x = fx.stk.top();fx.stk.pop();
-        auto y = fx.stk.top();fx.stk.pop();
-        fx.stk.push(x*y);
+    regist("*", 2, [](FixEnv& fx,FixParam& $){
+        fx.ret(
+            make_shared<FixNum>(
+                dynamic_pointer_cast<FixNum>($[0])->value *
+                dynamic_pointer_cast<FixNum>($[1])->value
+            ));
     });
-    regist("fix",[](FixEnv& fx){
-        cout << fx.stk.top() << endl;
+    regist("/", 2, [](FixEnv& fx,FixParam& $){
+        fx.ret(
+            make_shared<FixNum>(
+                dynamic_pointer_cast<FixNum>($[0])->value /
+                dynamic_pointer_cast<FixNum>($[1])->value
+            ));
+    });
+    regist("times", 3, [](FixEnv& fx, FixParam& $){
+        auto handle = dynamic_pointer_cast<FixHandle>($[0]);
+        handle->slots.push_back($[1]);
+        auto time = dynamic_pointer_cast<FixNum>($[2])->value;
+        while(time --){
+            handle->invoke(fx);
+        };
+    });
+    regist("consume", 0, [](FixEnv& fx, FixParam& $){
+        while(!fx.stk.empty()){
+            if(fx.stk.top()->isHandle()) cout << "[Fix]" << "  ";
+            else cout << dynamic_pointer_cast<FixNum>(fx.stk.top())->value << "  ";
+            fx.stk.pop();
+        }
+        cout << endl;
     });
 }
 
@@ -54,9 +141,9 @@ int main(){
     string s;
     while(cin >> s){
         if(s[0] >= '0' && s[0] <= '9'){
-            fx.push(atoi(s.c_str()));
+            fx.eval(atoi(s.c_str()));
         }else{
-            fx.push(s);
+            fx.eval(s);
         }
     }
     return 0;

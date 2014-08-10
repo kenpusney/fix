@@ -10,6 +10,7 @@
 using namespace std;
 
 struct FixEnv;
+struct FixHandle;
 struct FixObject{
     virtual bool isHandle(){
         return false;
@@ -25,8 +26,8 @@ using FixParam = vector<shared_ptr<FixObject>>;
 
 struct FixStub:FixObject{
     size_t params;
-    function<void(FixEnv&, FixParam&)> fn;
-    FixStub(function<void(FixEnv&,FixParam&)> fn_, size_t params_):params(params_), fn(fn_){}
+    function<void(FixEnv&, FixParam&, FixHandle&)> fn;
+    FixStub(function<void(FixEnv&, FixParam&, FixHandle&)> fn_, size_t params_):params(params_), fn(fn_){}
     FixStub(){};
 };
 
@@ -40,12 +41,12 @@ struct FixHandle:FixObject{
     FixHandle(FixStub& stub_):params(stub_.params),
     stub(&stub_),slots(){};
     void invoke(FixEnv& env){
-        this->stub->fn(env, slots);
+        this->stub->fn(env, slots, *this);
     }
 };
 
 struct FixEnv{
-    static void regist(string name, size_t params, function<void(FixEnv&,FixParam&)> fn){
+    static void regist(string name, size_t params, function<void(FixEnv&,FixParam&,FixHandle&)> fn){
         env[name] = FixStub(fn, params);
     }
     void eval(string s){
@@ -82,42 +83,43 @@ private:
     stack<shared_ptr<FixObject>> stk;
     static map<string,FixStub> env;
 };
+
 map<string,FixStub> FixEnv::env{};
 
 void FixEnv::init_base(){
-    regist("fix", 1, [](FixEnv& fx,FixParam& $){
+    regist("fix", 1, [](FixEnv& fx,FixParam& $, FixHandle& self){
         cout <<"=> "<< dynamic_pointer_cast<FixNum>($[0])->value << endl;
         fx.ret($[0]);
     });
-    regist("+", 2, [](FixEnv& fx,FixParam& $){
+    regist("+", 2, [](FixEnv& fx,FixParam& $, FixHandle& self){
         fx.ret(
             make_shared<FixNum>(
                 dynamic_pointer_cast<FixNum>($[0])->value +
                 dynamic_pointer_cast<FixNum>($[1])->value
             ));
     });
-    regist("-", 2, [](FixEnv& fx,FixParam& $){
+    regist("-", 2, [](FixEnv& fx,FixParam& $, FixHandle& self){
         fx.ret(
             make_shared<FixNum>(
                 dynamic_pointer_cast<FixNum>($[0])->value -
                 dynamic_pointer_cast<FixNum>($[1])->value
             ));
     });
-    regist("*", 2, [](FixEnv& fx,FixParam& $){
+    regist("*", 2, [](FixEnv& fx,FixParam& $, FixHandle& self){
         fx.ret(
             make_shared<FixNum>(
                 dynamic_pointer_cast<FixNum>($[0])->value *
                 dynamic_pointer_cast<FixNum>($[1])->value
             ));
     });
-    regist("/", 2, [](FixEnv& fx,FixParam& $){
+    regist("/", 2, [](FixEnv& fx,FixParam& $, FixHandle& self){
         fx.ret(
             make_shared<FixNum>(
                 dynamic_pointer_cast<FixNum>($[0])->value /
                 dynamic_pointer_cast<FixNum>($[1])->value
             ));
     });
-    regist("times", 3, [](FixEnv& fx, FixParam& $){
+    regist("times", 3, [](FixEnv& fx, FixParam& $, FixHandle& self){
         auto handle = dynamic_pointer_cast<FixHandle>($[0]);
         handle->slots.push_back($[1]);
         auto time = dynamic_pointer_cast<FixNum>($[2])->value;
@@ -125,7 +127,7 @@ void FixEnv::init_base(){
             handle->invoke(fx);
         };
     });
-    regist("consume", 0, [](FixEnv& fx, FixParam& $){
+    regist("consume", 0, [](FixEnv& fx, FixParam& $, FixHandle& self){
         while(!fx.stk.empty()){
             if(fx.stk.top()->isHandle()) cout << "[Fix]" << "  ";
             else cout << dynamic_pointer_cast<FixNum>(fx.stk.top())->value << "  ";
@@ -140,6 +142,7 @@ int main(){
     FixEnv::init_base();
     string s;
     while(cin >> s){
+        if(!s.size()) continue;
         if(s[0] >= '0' && s[0] <= '9'){
             fx.eval(atoi(s.c_str()));
         }else{

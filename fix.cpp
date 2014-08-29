@@ -41,8 +41,17 @@ struct FixHandle:FixObject{
     vector<shared_ptr<FixObject>> slots;
     FixHandle(FixStub& stub_):params(stub_.params),
     stub(&stub_),slots(){};
-    void invoke(FixEnv& env){
+    virtual void invoke(FixEnv& env){
         this->stub->fn(env, slots, *this);
+    }
+};
+//// TODO
+struct FixBlock:FixHandle{
+    vector<string> cmds;
+    FixBlock(FixStub& stub_):FixHandle(stub_){
+    }
+    virtual void invoke(FixEnv& env){
+
     }
 };
 
@@ -135,6 +144,14 @@ void FixEnv::init_base(){
             fx.stk.pop();
         }
         cout << endl;
+    });
+    regist("dup", 1, [](FixEnv& fx, FixParam& $, FixHandle& self){
+        fx.ret($[0]);
+        fx.ret($[0]);
+    });
+    regist("swap", 2, [](FixEnv& fx, FixParam& $, FixHandle& self){
+        fx.ret($[0]);
+        fx.ret($[1]);
     });
 }
 

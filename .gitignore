@@ -6,3 +6,6 @@ obj/
 *.cbp
 *.depend
 *.layout
+*.sdf
+*.opensdf
+*.suo

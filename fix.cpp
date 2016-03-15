@@ -160,6 +160,7 @@ private:
     stack<shared_ptr<FixObject>> stk;
     FixBlock* handle;
     string block_name;
+public:
     bool is_def_mode;
 };
 
@@ -169,7 +170,10 @@ FixBlock::FixBlock(): FixStub()
     {
         for(auto cmd : cmds)
         {
-            fx.eval(cmd);
+            if(cmd[0] >= '0' && cmd[0] <= '9')
+                fx.eval(atoi(cmd.c_str()));
+            else
+                fx.eval(cmd);
         }
     };
 }
@@ -231,11 +235,15 @@ void FixEnv::init_base()
            [](FixEnv& fx, FixParam& $, FixHandle& self)
     {
         auto handle = dynamic_pointer_cast<FixHandle>($[0]);
-        handle->slots.push_back($[1]);
-        auto time = dynamic_pointer_cast<FixNum>($[2])->value;
+        auto time = dynamic_pointer_cast<FixNum>($[1])->value;
+        handle->slots.push_back($[2]);
         while(time --)
         {
             handle->invoke(fx);
+            if (time - 1 != 0) {
+                handle->slots.insert(end(handle->slots) - 1, fx.stk.top());
+                fx.stk.pop();
+            }
         };
     });
     
@@ -278,7 +286,7 @@ int main(){
     while(cin >> s)
     {
         if(!s.size()) continue;
-        if(s[0] >= '0' && s[0] <= '9')
+        if(s[0] >= '0' && s[0] <= '9' && !fx.is_def_mode)
             fx.eval(atoi(s.c_str()));
         else
             fx.eval(s);

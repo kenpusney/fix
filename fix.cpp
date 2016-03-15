@@ -240,8 +240,10 @@ void FixEnv::init_base()
         while(time --)
         {
             handle->invoke(fx);
-            if (time - 1 != 0) {
-                handle->slots.insert(end(handle->slots) - 1, fx.stk.top());
+            if (time != 0) {
+                auto it = end(handle->slots) - 1;
+                it = handle->slots.erase(it);
+                handle->slots.insert(it, fx.stk.top());
                 fx.stk.pop();
             }
         };
